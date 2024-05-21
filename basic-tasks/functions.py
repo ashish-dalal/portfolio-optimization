@@ -25,28 +25,21 @@ def fetch_data(stock_list, start_date, end_date):
 
     ## A FUNCTION TO RETRIEVE INFORMATION FOR A GIVEN LIST OF STOCKS
 
-def fetch_data(stock_list, start_date, end_date, div=True):
+def fetch_data(stock_list, start_date, end_date, period=None, dividend=True):
     
     """Returns stock_price_df, stock_dividend_df"""
     
-    if type(stock_list)!=list:
-        stock_list = [stock_list]
+    tickers = yf.Tickers(stock_list)
     
-    for i in range(len(stock_list)):
-        stock_list[i] = stock_list[i].upper()
-
-    stock_price = {}
-    stock_dividend = {}
-    for i in tqdm(range(len(stock_list))):
-        ticker = yf.Ticker(stock_list[i])
-        stock_data = ticker.history(start=start_date, end=end_date)
-        stock_price[stock_list[i]] = stock_data['Close']
-        if div:
-            stock_dividend[stock_list[i]] = stock_data['Dividends']
-    if div:    
-        return pd.DataFrame(stock_price), pd.DataFrame(stock_dividend)
+    if start_date is not None:
+        historical_data = tickers.history(start=start_date, end=end_date)
+    if period is not None:
+        historical_data = tickers.history(period=period)
+    
+    if dividend:    
+        return historical_data.Close, historical_data.Dividends
     else:
-        return pd.DataFrame(stock_price)
+        return historical_data.Close
 
 ## FUNCTION TO CONVERT WEIGHTS TO DATAFRAME
 
