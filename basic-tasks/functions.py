@@ -25,21 +25,93 @@ def fetch_data(stock_list, start_date, end_date):
 
     ## A FUNCTION TO RETRIEVE INFORMATION FOR A GIVEN LIST OF STOCKS
 
-def fetch_data(stock_list, start_date, end_date, period=None, dividend=True):
+def fetch_data(stock_list, start_date, end_date, dividend=True):
     
     """Returns stock_price_df, stock_dividend_df"""
     
-    tickers = yf.Tickers(stock_list)
+    if type(stock_list)!=list:
+        stock_list = [stock_list]
     
-    if start_date is not None:
-        historical_data = tickers.history(start=start_date, end=end_date)
-    if period is not None:
-        historical_data = tickers.history(period=period)
-    
+    for i in range(len(stock_list)):
+        stock_list[i] = stock_list[i].upper()
+
+    stock_price = {}
+    stock_dividend = {}
+    for i in tqdm(range(len(stock_list))):
+        ticker = yf.Ticker(stock_list[i])
+        stock_data = ticker.history(start=start_date, end=end_date)
+        stock_price[stock_list[i]] = stock_data['Close']
+        if dividend:
+            stock_dividend[stock_list[i]] = stock_data['Dividends']
     if dividend:    
-        return historical_data.Close, historical_data.Dividends
+        return pd.DataFrame(stock_price), pd.DataFrame(stock_dividend)
     else:
-        return historical_data.Close
+        return pd.DataFrame(stock_price)
+
+def fetch_data_new(stock_list, start_date=None, end_date=None, period=None, dividend=False):
+    
+    """Returns stock_price_df, stock_dividend_df"""
+    
+    if type(stock_list)!=list:
+        stock_list = [stock_list]
+
+    if len(stock_list) > 1:
+        tickers = yf.Tickers(stock_list)
+        
+        if start_date is not None:
+            historical_data = tickers.history(start=start_date, end=end_date)
+        if period is not None:
+            historical_data = tickers.history(period=period)
+        
+        if dividend:
+
+            hist_price = historical_data.Close
+            hist_price.index = hist_price.index.tz_localize(None)
+            hist_price = hist_price.bfill(axis=0)
+            hist_price = hist_price.ffill(axis=0)     
+            
+            hist_dividend = historical_data.Dividends
+            hist_dividend.index = hist_dividend.index.tz_localize(None)
+            hist_dividend = hist_dividend.bfill(axis=0)
+            hist_dividend = hist_dividend.ffill(axis=0)
+
+            return hist_price.dropna(), hist_dividend.dropna()
+        else:
+
+            hist_price = historical_data.Close
+            hist_price.index = hist_price.index.tz_localize(None) 
+            hist_price = hist_price.bfill(axis=0)
+            hist_price = hist_price.ffill(axis=0)
+
+            return hist_price.dropna()
+    
+    elif len(stock_list) == 1:
+        tickers = yf.Ticker(stock_list[0])
+        
+        if start_date is not None:
+            historical_data = tickers.history(start=start_date, end=end_date)
+        if period is not None:
+            historical_data = tickers.history(period=period)
+        
+        if dividend:    
+            hist_price = historical_data.Close
+            hist_price.index = hist_price.index.tz_localize(None)     
+            hist_price = hist_price.bfill(axis=0)
+            hist_price = hist_price.ffill(axis=0)
+
+            hist_dividend = historical_data.Dividends
+            hist_dividend.index = hist_dividend.index.tz_localize(None)
+            hist_dividend = hist_dividend.bfill(axis=0)
+            hist_dividend = hist_dividend.ffill(axis=0)
+
+            return hist_price.dropna(), hist_dividend.dropna()
+        else:
+            hist_price = historical_data.Close
+            hist_price.index = hist_price.index.tz_localize(None) 
+            hist_price = hist_price.bfill(axis=0)
+            hist_price = hist_price.ffill(axis=0)
+
+            return hist_price.dropna()
 
 ## FUNCTION TO CONVERT WEIGHTS TO DATAFRAME
 
@@ -61,12 +133,37 @@ def weights_to_dataframe(arr, cols):
 
 def calculate_beta(log_return_portfolio, log_return_market):
     
-    covariance = np.cov(log_return_portfolio, log_return_market.iloc[:,0])[0,1]
+    intersection_index = np.intersect1d(log_return_portfolio.index, log_return_market.index)
+    
+    log_return_market = log_return_market.loc[intersection_index,log_return_market.columns[0]]
+    log_return_portfolio = log_return_portfolio[intersection_index]
+    
+    covariance = np.cov(log_return_portfolio, log_return_market)[0,1]
     variance_market = log_return_market.var()
     
     beta = covariance/variance_market
     
-    return beta[0]
+    if type(beta) == np.float64:
+        return beta
+    else:
+        return beta[0]
+
+def calc_beta(log_return_portfolio, log_return_market):
+    # Find the intersection of indices
+    index = np.intersect1d(log_return_market.index, log_return_portfolio.index)
+    
+    # Filter the log returns to only include the intersected indices
+    log_return_market = log_return_market[index]
+    log_return_portfolio = log_return_portfolio[index]
+
+    # Calculate the covariance and variance
+    cov = np.cov(log_return_market, log_return_portfolio)[0, 1]
+    var = log_return_market.var()
+
+    # Calculate beta
+    beta = cov / var
+    
+    return beta
 
 ## PLOT STOCK PRICES
 #1 single stock
@@ -133,7 +230,7 @@ def plot_multi_price(df_price, df_dividend, figure=None):
 
 ## FOR % COMPARISONS
 
-def plot_single_price_comparison(price_data, dividend_data, figure=None, stock=None):
+def plot_single_price_comparison(price_data, dividend_data=None, figure=None, stock=None):
     
     if figure is None:
         fig = go.Figure()
@@ -141,8 +238,11 @@ def plot_single_price_comparison(price_data, dividend_data, figure=None, stock=N
         fig = figure
     
     price_data = 100*price_data/price_data[0] - 100
-        
-    fig = plot_price(price_data,dividend_data)
+
+    if dividend_data is None:
+        fig = plot_price(price_data)
+    else:
+        fig = plot_price(price_data,dividend_data)
     fig.add_trace(go.Scatter(x=price_data.index, 
                              y=np.ones(len(price_data))*price_data[0], 
                              mode='lines', line=dict(width=2,dash='dash'), showlegend=False))
